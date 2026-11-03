@@ -80,6 +80,57 @@ describe('FanChart', () => {
     ).toEqual(['GivenR', 'Smith'])
   })
 
+  it('reveals deep ancestor names on zoom and hides them again on reset', () => {
+    const chart = new FanChart()
+    const deep = {
+      ...layout,
+      nodes: [
+        layout.nodes[0],
+        {
+          ...layout.nodes[1],
+          key: 'pffffff',
+          generation: 6,
+          x0: 0,
+          x1: (2 * Math.PI) / 64,
+          y0: 360,
+          y1: 420,
+        },
+      ],
+    }
+    chart.update(deep, size)
+    const ancestor = () => chart.node.querySelector('#pffffff').parentNode
+    expect(ancestor().querySelectorAll('text')).toHaveLength(0)
+    const applyZoom = transform =>
+      select(chart.node).call(chart.viewport._zoom.transform, transform)
+    applyZoom(zoomIdentity.scale(4))
+    expect(ancestor().querySelectorAll('text')).toHaveLength(2)
+    expect(ancestor().querySelector('textPath').textContent).toBe('Smith')
+    expect(
+      +ancestor().querySelector('text').getAttribute('font-size') * 4
+    ).toBe(12)
+    const label = ancestor().querySelector('text')
+    applyZoom(zoomIdentity.translate(20, 30).scale(4))
+    expect(ancestor().querySelector('text')).toBe(label)
+    chart.update(deep, {
+      ...size,
+      nameDisplayFormat: chartNameDisplayFormat.givenThenSurname,
+    })
+    expect(ancestor().querySelector('textPath').textContent).toBe('GivenF')
+    applyZoom(zoomIdentity)
+    expect(ancestor().querySelectorAll('text')).toHaveLength(0)
+  })
+
+  it('keeps names hidden during arc motion even if the scale changes', async () => {
+    const chart = drawn()
+    chart.update(layoutFan(graph, 'F', {depth: 3}), {...size, duration: 20})
+    select(chart.node).call(
+      chart.viewport._zoom.transform,
+      zoomIdentity.scale(3)
+    )
+    expect(texts(chart)).toEqual([])
+    await vi.waitFor(() => expect(texts(chart)).toEqual(['Smith', 'GivenF']))
+  })
+
   it('centres the chart in the view', () => {
     // The bounds are a square of 2 × 120 around the root person
     expect(drawn().node.getAttribute('viewBox')).toBe('-400,-300,800,600')
