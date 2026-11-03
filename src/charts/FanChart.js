@@ -289,7 +289,14 @@ export class FanChart {
       .attr('font-size', 12)
       .attr('text-anchor', 'middle')
     this._content = this._svg.append('g').attr('id', 'chart-content')
-    this._viewport = new ChartViewport(this._svg, this._content)
+    this._zoomScale = 1
+    this._viewport = new ChartViewport(this._svg, this._content, {
+      onZoom: ({k}) => {
+        if (k === this._zoomScale) return
+        this._zoomScale = k
+        if (this._layout && !this._motion) this._drawNames()
+      },
+    })
     this._arcs = this._content.append('g')
     // The menu button lies on the arcs
     this._buttons = this._content.append('g')
@@ -541,7 +548,7 @@ export class FanChart {
   _drawNames() {
     const cells = this._arcs.selectChildren('.fan-cell')
     cells.selectAll('text').remove()
-    appendNames(cells, this._nameOptions)
+    appendNames(cells, {...this._nameOptions, zoomScale: this._zoomScale})
   }
 }
 
@@ -587,7 +594,10 @@ function setFanInteraction(cells, {interactive, onClick}) {
 
 // Appends the names of the people: two lines across the centre for the root
 // person, and two lines along the arc for ancestors whose arc is long enough
-function appendNames(cells, {nameDisplayFormat, palette, padding}) {
+function appendNames(
+  cells,
+  {nameDisplayFormat, palette, padding, zoomScale = 1}
+) {
   const surnameFirst =
     nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
   const [firstName, secondName] = surnameFirst
@@ -595,7 +605,11 @@ function appendNames(cells, {nameDisplayFormat, palette, padding}) {
     : [p => p.name_given, p => p.name_surname]
   const [firstWeight, secondWeight] = surnameFirst ? [500, 300] : [300, 500]
 
-  const fontSize = d => Math.min(12, (((d.y0 + d.y1) / 2) * (d.x1 - d.x0)) / 10)
+  // Keep ancestor text at most 12 screen pixels when zooming in. This also
+  // lets a revealed arc fit more characters rather than magnifying an ellipsis.
+  const textScale = Math.max(1, zoomScale)
+  const fontSize = d =>
+    Math.min(12 / textScale, (((d.y0 + d.y1) / 2) * (d.x1 - d.x0)) / 10)
   // Shortens `s` to fit the arc of `d`, or the disc of the root person
   const clipString = (s, d, isCenter = false) => {
     const length = isCenter
@@ -634,7 +648,7 @@ function appendNames(cells, {nameDisplayFormat, palette, padding}) {
       : (d.y1 * (d.x1 - d.x0)) / 2 - padding
   const ancestors = cells
     .filter(d => d.generation > 0)
-    .filter(d => ((d.y0 + d.y1) / 2) * (d.x1 - d.x0) > 50)
+    .filter(d => zoomScale * ((d.y0 + d.y1) / 2) * (d.x1 - d.x0) > 50)
   const lines = [
     {name: firstName, weight: firstWeight, dy: -7, spacing: [20, 10]},
     {name: secondName, weight: secondWeight, dy: 7, spacing: [40, 15]},
@@ -645,7 +659,7 @@ function appendNames(cells, {nameDisplayFormat, palette, padding}) {
       .style('fill', palette.fanText)
       .attr('font-weight', weight)
       .attr('font-size', fontSize)
-      .attr('dy', d => (d.y1 - d.y0) / 2 + dy + 3)
+      .attr('dy', d => (d.y1 - d.y0) / 2 + dy / textScale + 3)
       .append('textPath')
       .attr('xlink:href', d => `#${d.key}`)
       .style('fill', palette.fanText)
