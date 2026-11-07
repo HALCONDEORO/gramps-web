@@ -76,6 +76,15 @@ export function parseBurialAge(
     event?.type !== 'Burial'
   )
     return []
+  // Negative provenance or another actor taints the whole note. Splitting a
+  // witness/retired statement must never detach its age from that context.
+  const context = normalize(text)
+  if (
+    /\b(?:retir[a-z]*|discard[a-z]*|descart[a-z]*|contradi[a-z]*|cens[a-z]*|padron|index|indice|temoin[a-z]*|testig[a-z]*|presence|present[a-z]*|pere|mere|frere|soeur|fils|fille|epoux|epouse|femme|mari|veuf|veuve|padre|madre|hermano|hermana|hijo|hija|esposo|esposa|marido|mujer|viudo|viuda|avec|accompagn[a-z]*|acompan[a-z]*|con|junto|hypothes[a-z]*|hipotes[a-z]*)\b/.test(
+      context
+    )
+  )
+    return []
   const id = normalize(event.gramps_id)
   const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const words = [...Object.keys(units), 'vingts', 'et', 'y'].join('|')
@@ -87,6 +96,7 @@ export function parseBurialAge(
   const result = []
   for (const clause of text.split(/[;\n.]+/)) {
     let value = normalize(clause).trim()
+    if (!value) continue
     let linked = false
     if (id) {
       const reference = new RegExp(`^${escapedId}(?![a-z0-9])\\s*[:,-]?\\s*`)
@@ -95,11 +105,11 @@ export function parseBurialAge(
         linked = true
       }
     }
-    if (!attached && !linked) continue
+    if (!attached && !linked) return []
     const found = grammar.exec(value)
-    if (!found) continue
+    if (!found) return []
     const years = number(found[1])
-    if (!Number.isFinite(years) || years < 0 || years > 120) continue
+    if (!Number.isFinite(years) || years < 0 || years > 120) return []
     result.push({
       eventHandle: event.handle,
       years,

@@ -78,3 +78,18 @@ it.each([
 ])('rejects all narrative subject ambiguity: %s', text => {
   expect(parseBurialAge(text, e, {attached: true})).toEqual([])
 })
+
+it.each([
+  'Edad 50 años; corrección retirada',
+  'Primera lectura retirada. 80ans',
+  'Témoin Jean; âgé de 70ans',
+  'Inhumé Pierre avec Jean; âgé de 70ans',
+  'Censo: Jean. Edad 50 años',
+])('rejects negative or ambiguous context anywhere in a note: %s', text => {
+  expect(parseBurialAge(text, e, {attached: true})).toEqual([])
+})
+
+it('does not detach an age from arbitrary prose or a second event in another clause', () => {
+  for (const text of ['Jean. âgé de 70ans', 'E90002. âgé de 70ans'])
+    expect(parseBurialAge(text, e, {attached: true})).toEqual([])
+})
