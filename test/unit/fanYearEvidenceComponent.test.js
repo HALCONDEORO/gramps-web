@@ -1,5 +1,6 @@
 import {describe, it, expect, vi} from 'vitest'
 import '../../src/components/GrampsjsFanChart.js'
+import {layoutFan} from '../../src/charts/layout/fanLayout.js'
 import {FamilyGraph} from '../../src/charts/model/FamilyGraph.js'
 const p = {
   handle: 'person',
@@ -78,4 +79,33 @@ describe('fan evidence component lifetime', () => {
     expect(el._displayLayout()).not.toBe(el._layout)
     expect(el._layout.nodes[0].person).toBe(p)
   })
+})
+
+it('exports the same family evidence as the live display, without altering source data', async () => {
+  const el = setup()
+  const profile = {name_given: 'Fictional', name_surname: 'Example', sex: 'F'}
+  const source = {...p, profile, extended: {events: []}, event_ref_list: []}
+  el._layout = layoutFan(new FamilyGraph([source]), 'person', {depth: 2})
+  el._familyEvents = new Map([
+    [
+      'person',
+      [
+        {
+          father_handle: 'person',
+          event_ref_list: [{role: 'Family'}],
+          extended: {events: [{type: 'Marriage', date: {year: 1800}}]},
+        },
+      ],
+    ],
+  ])
+  const before = JSON.stringify(source)
+  const svg = new DOMParser().parseFromString(
+    await el.svgDocument(),
+    'image/svg+xml'
+  )
+  expect(svg.querySelector('[data-year-level="marriage"]')).not.toBeNull()
+  expect(svg.querySelector('#legend')?.textContent).toContain(
+    'Estimated, not birth'
+  )
+  expect(JSON.stringify(source)).toBe(before)
 })

@@ -229,3 +229,21 @@ describe('chartSvgDocument of a fan chart', () => {
     expect(svg.querySelector('#legend')).toBeNull()
   })
 })
+
+describe('fan estimate export legend', () => {
+  it('keeps the estimate key in a separate gutter only when requested', async () => {
+    const layout = layoutFan(graph, 'R', {depth: 3})
+    const content = await chartSvgDocument(FanChart, layout, {
+      color: 'estimatedYear',
+      preserveLegend: true,
+    })
+    const svg = parse(content)
+    expect(svg.querySelector('#legend')?.textContent).toContain(
+      'Estimated, not birth'
+    )
+    expect(Number(svg.getAttribute('width'))).toBe(
+      layout.bounds.xMax - layout.bounds.xMin + 310
+    )
+    expect(Number(svg.getAttribute('height'))).toBeGreaterThanOrEqual(350)
+  })
+})

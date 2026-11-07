@@ -78,13 +78,15 @@ export function parseBurialAge(
     return []
   const result = []
   const id = event.gramps_id
+  const escapedId = String(id ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const clauses = text.split(/[;\n.]+/)
   for (const clause of clauses) {
     const value = normalize(clause)
     if (/-\s*\d+\s*(?:ans|anos)/.test(value)) continue
     if (
       !attached &&
-      (!id || !new RegExp(`(^|[^a-z0-9])${id}(?![0-9])`, 'i').test(clause))
+      (!id ||
+        !new RegExp(`(^|[^a-z0-9])${escapedId}(?![a-z0-9])`, 'i').test(clause))
     )
       continue
     if (

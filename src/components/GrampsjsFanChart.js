@@ -1,5 +1,6 @@
 import {html} from 'lit'
 
+import {chartSvgDocument} from '../charts/svgExport.js'
 import {FanChart} from '../charts/FanChart.js'
 import {loadFanYearEvidence} from '../charts/loadFanYearEvidence.js'
 import {layoutFan} from '../charts/layout/fanLayout.js'
@@ -156,6 +157,14 @@ class GrampsjsFanChart extends GrampsjsChartBase {
     this._yearEvidence = new Map()
     this._familyEvents = new Map()
     super.disconnectedCallback()
+  }
+
+  svgDocument() {
+    if (!this._layout) return Promise.resolve(null)
+    return chartSvgDocument(FanChart, this._displayLayout(), {
+      ...this.chartOptions(),
+      preserveLegend: ['estimatedYear', 'deathYear'].includes(this.color),
+    })
   }
 
   chartOptions() {

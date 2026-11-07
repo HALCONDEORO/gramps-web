@@ -51,3 +51,8 @@ describe('strict burial age text evidence', () => {
     ).toMatchObject({years: 85, approximate: true, candidate: true})
   })
 })
+
+it('treats custom event identifiers as literal text, not regex syntax', () => {
+  const event = {...e, gramps_id: 'E[90001'}
+  expect(parseBurialAge('E[90001 edad60años', event)[0]?.years).toBe(60)
+})
