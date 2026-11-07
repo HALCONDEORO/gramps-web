@@ -69,3 +69,12 @@ it.each([
     expect(parseBurialAge(text, e, {attached})).toEqual([])
   }
 )
+
+it.each([
+  'Inhumé Pierre avec Jean âgé de 70 ans',
+  'Inhumé Pierre accompagné de Jean âgé de 70 ans',
+  'Inhumé Pierre et Jean âgé de 70 ans',
+  'E90001 Pierre, Jean âgé de 70 ans',
+])('rejects all narrative subject ambiguity: %s', text => {
+  expect(parseBurialAge(text, e, {attached: true})).toEqual([])
+})

@@ -62,8 +62,8 @@ function number(text) {
   return undefined
 }
 
-// Personal notes need an explicit event identifier in the same clause. Merely
-// mentioning a burial somewhere in a multi-person note is not sufficient.
+// Accept only standalone age clauses. Narrative prose cannot establish whose
+// age it describes, even when the note is attached to a Burial event.
 export function parseBurialAge(
   text,
   event,
@@ -76,71 +76,38 @@ export function parseBurialAge(
     event?.type !== 'Burial'
   )
     return []
+  const id = normalize(event.gramps_id)
+  const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const words = [...Object.keys(units), 'vingts', 'et', 'y'].join('|')
+  const age = `(\\d{1,3}|(?:${words})(?:[ -]*(?:${words})){0,4})\\s*(?:ans|anos)`
+  const prefix = `(?:(?:a+ge(?:e)?(?: de| d['’])?|edad|a los|unos|environ)\\s*(?:environ\\s*)?)?`
+  const grammar = new RegExp(
+    `^(?:candidat(?:o|e)?\\s*\\(\\?\\)\\s*,?\\s*)?${prefix}${age}(?:\\s+(?:ou environ|environ|aprox))?$`
+  )
   const result = []
-  const id = event.gramps_id
-  const escapedId = String(id ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const clauses = text.split(/[;\n.]+/)
-  for (const clause of clauses) {
-    const value = normalize(clause)
-    if (/-\s*\d+\s*(?:ans|anos)/.test(value)) continue
-    if (
-      !attached &&
-      (!id ||
-        !new RegExp(`(^|[^a-z0-9])${escapedId}(?![a-z0-9])`, 'i').test(clause))
-    )
-      continue
-    if (
-      /(?:cens|padron|testig|temoin|retir|discard|descart|indice|index|contradi|no acta|hypothes|hipotes)/.test(
-        value
-      )
-    )
-      continue
-    // A clause naming relatives or companions does not establish whose age
-    // follows. Fail closed rather than assigning their age to the deceased.
-    if (
-      /\b(?:presence|present|presente|presentes|pere|mere|frere|soeur|fils|fille|epoux|epouse|femme|mari|veuf|veuve|padre|madre|hermano|hermana|hijo|hija|esposo|esposa|marido|mujer|viudo|viuda|abuelo|abuela|nieto|nieta|yerno|nuera|beau|belle|gendre|temoin|testigo)\b/.test(
-        value
-      )
-    )
-      continue
-    // Reject another event reference, even in an event-attached multi-act note.
-    const refs = clause.match(/\bE\d+\b/g) ?? []
-    if (refs.some(ref => ref !== id)) continue
-    // A single age statement, not an arbitrary number, date or birth estimate.
-    const words = [...Object.keys(units), 'vingts', 'et', 'y'].join('|')
-    const expression = `(\\d{1,3}|(?:${words})(?:[ -]*(?:${words})){0,4})\\s*(?:ans|anos)(?![a-z])`
-    const explicit = new RegExp(
-      `(?:^|[^a-z])(?:a+ge(?:e)?(?: de| d['’])?|edad|a los|unos|environ)\\s*(?:environ\\s*)?${expression}`,
-      'g'
-    )
-    let found = [...value.matchAll(explicit)]
-    // Bare numeric years are accepted only as a whole age statement or in a
-    // clause explicitly describing this interment, never embedded in an ID.
-    if (
-      !found.length &&
-      (/^(?:\d{1,3})\s*(?:ans|anos)$/.test(value.trim()) ||
-        /sepultur|entierro|burial|inhum/.test(value))
-    ) {
-      const numeric = /(?:^|[^a-z0-9])(\d{1,3})\s*(?:ans|anos)(?![a-z])/g
-      found = [...value.matchAll(numeric)]
+  for (const clause of text.split(/[;\n.]+/)) {
+    let value = normalize(clause).trim()
+    let linked = false
+    if (id) {
+      const reference = new RegExp(`^${escapedId}(?![a-z0-9])\\s*[:,-]?\\s*`)
+      if (reference.test(value)) {
+        value = value.replace(reference, '')
+        linked = true
+      }
     }
-    const allNumbers = [
-      ...value.matchAll(/(?:^|[^a-z0-9])(\d{1,3})\s*(?:ans|anos)(?![a-z])/g),
-    ].map(match => Number(match[1]))
-    if (new Set(allNumbers).size > 1) continue
-    const ages = found
-      .map(match => number(match[1]))
-      .filter(age => Number.isFinite(age) && age >= 0 && age <= 120)
-    if (ages.length !== 1) continue
+    if (!attached && !linked) continue
+    const found = grammar.exec(value)
+    if (!found) continue
+    const years = number(found[1])
+    if (!Number.isFinite(years) || years < 0 || years > 120) continue
     result.push({
       eventHandle: event.handle,
-      years: ages[0],
+      years,
       evidence: 'explicit-burial-age',
       sourceNoteHandles: noteHandle ? [noteHandle] : [],
-      approximate: /environ|unos|aprox|~/.test(value),
-      candidate: /candidat|probable|\(\?\)/.test(normalize(text)),
+      approximate: /environ|unos|aprox/.test(value),
+      candidate: /candidat/.test(value),
     })
   }
-  // Multiple different ages mean unresolved evidence, not a choice of one.
   return new Set(result.map(value => value.years)).size > 1 ? [] : result
 }
