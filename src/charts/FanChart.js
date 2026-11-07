@@ -1,3 +1,5 @@
+import {zoomTransform} from 'd3-zoom'
+import {fanColorYear} from './fanColorYear.js'
 import {arc as d3arc} from 'd3-shape'
 import {create, local, select} from 'd3-selection'
 import {
@@ -35,9 +37,7 @@ export const fanColorModes = {
   },
   birthYear: {
     type: 'number',
-    fct: person =>
-      person?.extended?.events?.[person?.birth_ref_index]?.date?.year ||
-      undefined,
+    fct: fanColorYear,
   },
   deathYear: {
     type: 'number',
@@ -292,9 +292,8 @@ export class FanChart {
     this._zoomScale = 1
     this._viewport = new ChartViewport(this._svg, this._content, {
       onZoom: ({k}) => {
-        if (k === this._zoomScale) return
         this._zoomScale = k
-        if (this._layout && !this._motion) this._drawNames()
+        if (this._layout && !this._motion) this._scheduleNames()
       },
     })
     this._arcs = this._content.append('g')
@@ -325,6 +324,8 @@ export class FanChart {
   // Removes the chart and the legend, keeping the zoom transform. The next
   // layout is not related to the removed one.
   clear() {
+    clearTimeout(this._namesTimer)
+    this._namesEpoch = (this._namesEpoch ?? 0) + 1
     this._arcs.interrupt('arc')
     this._motion = null
     this._layout = undefined
@@ -468,6 +469,7 @@ export class FanChart {
         exit: exit => {
           exit.selectAll('text').remove()
           exit.select('.fan-arc').attr('id', null)
+          exit.selectAll('.fan-label-path').remove()
         },
         duration,
       }
@@ -476,7 +478,7 @@ export class FanChart {
     })
     cells.select('.fan-arc').attr('id', d => d.key)
 
-    cells.selectAll('text').remove()
+    cells.selectAll('text, .fan-label-path').remove()
     if (continues) {
       this._drawArcs(this._motion.t)
     } else if (duration > 0 && relation.kind === 'lineage') {
@@ -545,10 +547,57 @@ export class FanChart {
     })
   }
 
-  _drawNames() {
+  // Keep transforms immediate during a gesture. Recompute semantic labels
+  // once scale events settle, rather than competing with every pinch frame.
+  _scheduleNames() {
+    this._namesEpoch = (this._namesEpoch ?? 0) + 1
+    clearTimeout(this._namesTimer)
+    this._namesTimer = setTimeout(() => {
+      this._namesTimer = undefined
+      if (this._layout && !this._motion) this._drawNames(true)
+    }, 120)
+  }
+
+  _drawNames(batched = false) {
+    clearTimeout(this._namesTimer)
+    this._namesTimer = undefined
+    const epoch = (this._namesEpoch ?? 0) + 1
+    this._namesEpoch = epoch
     const cells = this._arcs.selectChildren('.fan-cell')
-    cells.selectAll('text').remove()
-    appendNames(cells, {...this._nameOptions, zoomScale: this._zoomScale})
+    const node = this._svg.node()
+    const box = node.getAttribute('viewBox')?.split(',').map(Number)
+    const {x, y, k} = zoomTransform(node)
+    // Detached charts are also used for export. Cull only a live viewport.
+    const labelViewport =
+      node.isConnected && box?.length === 4
+        ? {
+            left: (box[0] - x) / k,
+            top: (box[1] - y) / k,
+            right: (box[0] + box[2] - x) / k,
+            bottom: (box[1] + box[3] - y) / k,
+          }
+        : undefined
+    const options = {
+      ...this._nameOptions,
+      zoomScale: this._zoomScale,
+      labelViewport,
+    }
+    if (!batched) {
+      appendNames(cells, options)
+      return
+    }
+    const pending = cells.nodes()
+    let index = 0
+    const batch = () => {
+      if (epoch !== this._namesEpoch || !this._layout || this._motion) return
+      const start = performance.now()
+      do {
+        appendNames(select(pending[index]), options)
+        index += 1
+      } while (index < pending.length && performance.now() - start < 4)
+      if (index < pending.length) requestAnimationFrame(batch)
+    }
+    if (pending.length) requestAnimationFrame(batch)
   }
 }
 
@@ -596,7 +645,7 @@ function setFanInteraction(cells, {interactive, onClick}) {
 // person, and two lines along the arc for ancestors whose arc is long enough
 function appendNames(
   cells,
-  {nameDisplayFormat, palette, padding, zoomScale = 1}
+  {nameDisplayFormat, palette, padding, zoomScale = 1, labelViewport}
 ) {
   const surnameFirst =
     nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
@@ -608,14 +657,13 @@ function appendNames(
   // Keep ancestor text at most 12 screen pixels when zooming in. This also
   // lets a revealed arc fit more characters rather than magnifying an ellipsis.
   const textScale = Math.max(1, zoomScale)
-  const fontSize = d =>
-    Math.min(12 / textScale, (((d.y0 + d.y1) / 2) * (d.x1 - d.x0)) / 10)
+  const fontSize = () => 12 / textScale
   // Shortens `s` to fit the arc of `d`, or the disc of the root person
   const clipString = (s, d, isCenter = false) => {
     const length = isCenter
       ? 2 * d.y1
-      : ((d.x1 - d.x0) * (d.y1 + d.y0)) / 2 - padding
-    const nChar = length / (fontSize(d) * 0.6)
+      : ((d.x1 - d.x0) * (d.y1 + d.y0)) / 2 - padding / textScale
+    const nChar = length / ((isCenter ? 12 : fontSize(d)) * 0.6)
     if (s.length <= nChar) {
       return s
     }
@@ -625,51 +673,120 @@ function appendNames(
     return `${s.slice(0, nChar - 2)}…`
   }
 
-  const centre = cells.filter(d => d.generation === 0)
-  const profile = d => d.person.profile
-  centre
-    .append('text')
-    .style('fill', palette.fanText)
-    .attr('font-weight', firstWeight)
-    .attr('dy', '-0.6em')
-    .text(d => clipString(firstName(profile(d)) || '', d, true))
-  centre
-    .append('text')
-    .style('fill', palette.fanText)
-    .attr('font-weight', secondWeight)
-    .attr('dy', '0.6em')
-    .text(d => clipString(secondName(profile(d)) || '', d, true))
-
-  // Text along the arc starts in its middle, and reads clockwise in the
-  // upper half and counterclockwise in the lower half
-  const startOffset = d =>
-    d.x0 >= Math.PI
-      ? (d.y1 + d.y0 / 2) * (d.x1 - d.x0) + (d.y1 - d.y0) - 3.5 * padding
-      : (d.y1 * (d.x1 - d.x0)) / 2 - padding
-  const ancestors = cells
-    .filter(d => d.generation > 0)
-    .filter(d => zoomScale * ((d.y0 + d.y1) / 2) * (d.x1 - d.x0) > 50)
+  // Dedicated open mid-arc path: closed sector contours include radial
+  // edges and the inner arc, which must never carry label glyphs.
+  const nameArc = d => {
+    const r = (d.y0 + d.y1) / 2
+    const reverse = d.x0 >= Math.PI
+    const [a, b] = reverse ? [d.x1, d.x0] : [d.x0, d.x1]
+    return `M${-r * Math.cos(a)},${-r * Math.sin(a)}A${r},${r} 0 ${
+      Math.abs(b - a) > Math.PI ? 1 : 0
+    } ${reverse ? 0 : 1} ${-r * Math.cos(b)},${-r * Math.sin(b)}`
+  }
   const lines = [
     {name: firstName, weight: firstWeight, dy: -7, spacing: [20, 10]},
     {name: secondName, weight: secondWeight, dy: 7, spacing: [40, 15]},
   ]
-  for (const {name, weight, dy, spacing} of lines) {
-    ancestors
-      .append('text')
-      .style('fill', palette.fanText)
-      .attr('font-weight', weight)
-      .attr('font-size', fontSize)
-      .attr('dy', d => (d.y1 - d.y0) / 2 + dy / textScale + 3)
-      .append('textPath')
-      .attr('xlink:href', d => `#${d.key}`)
-      .style('fill', palette.fanText)
-      .style('text-anchor', 'middle')
-      .attr('startOffset', startOffset)
-      .style('letter-spacing', d =>
-        d.x0 < Math.PI
-          ? `${(1 / d.y1) * spacing[0]}em`
-          : `-${(1 / d.y1) * spacing[1]}em`
+  // Cache labels on their arc element. Layout changes remove labels before
+  // this function; zoom only changes attributes/text on the existing nodes.
+  cells.each(function (d) {
+    const center = d.generation === 0
+    if (!this._fanBounds || this._fanBounds.data !== d) {
+      const angles = [d.x0, d.x1]
+      for (let a = 0; a <= 2 * Math.PI; a += Math.PI / 2) {
+        if (a >= d.x0 && a <= d.x1) angles.push(a)
+      }
+      const points = angles.flatMap(a =>
+        [d.y0, d.y1].map(r => [-r * Math.cos(a), -r * Math.sin(a)])
       )
-      .text(d => clipString(name(profile(d)) || '', d))
-  }
+      this._fanBounds = {
+        data: d,
+        left: Math.min(...points.map(p => p[0])),
+        right: Math.max(...points.map(p => p[0])),
+        top: Math.min(...points.map(p => p[1])),
+        bottom: Math.max(...points.map(p => p[1])),
+      }
+    }
+    const bounds = this._fanBounds
+    const inView =
+      !labelViewport ||
+      !(
+        bounds.right < labelViewport.left ||
+        bounds.left > labelViewport.right ||
+        bounds.bottom < labelViewport.top ||
+        bounds.top > labelViewport.bottom
+      )
+    const visible =
+      inView && (center || zoomScale * ((d.y0 + d.y1) / 2) * (d.x1 - d.x0) > 50)
+    if (!visible) {
+      if (this._fanLabels) {
+        this._fanLabels.forEach(label => label.remove())
+        this._fanLabels = undefined
+      }
+      return
+    }
+    if (!center && !this.querySelector('.fan-label-path')) {
+      const path = document.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'path'
+      )
+      path.setAttribute('class', 'fan-label-path')
+      path.setAttribute('id', `${d.key}-label`)
+      path.setAttribute('d', nameArc(d))
+      path.setAttribute('fill', 'none')
+      path.setAttribute('stroke', 'none')
+      this.appendChild(path)
+    }
+    const signature = [
+      zoomScale,
+      nameDisplayFormat,
+      palette.fanText,
+      padding,
+      d.person.profile.name_given,
+      d.person.profile.name_surname,
+    ].join('|')
+    if (
+      this._fanLabelSignature === signature &&
+      this._fanLabels?.every(label => label.parentNode === this)
+    )
+      return
+    if (!this._fanLabels?.every(label => label.parentNode === this)) {
+      this._fanLabels = lines.map(() => {
+        const text = document.createElementNS(
+          'http://www.w3.org/2000/svg',
+          'text'
+        )
+        if (!center)
+          text.appendChild(
+            document.createElementNS('http://www.w3.org/2000/svg', 'textPath')
+          )
+        this.appendChild(text)
+        return text
+      })
+    }
+    lines.forEach(({name, weight, dy}, index) => {
+      const text = this._fanLabels[index]
+      text.style.fill = palette.fanText
+      text.setAttribute('font-weight', weight)
+      if (center) {
+        text.setAttribute('dy', index ? '0.6em' : '-0.6em')
+        text.textContent = clipString(name(d.person.profile) || '', d, true)
+      } else {
+        text.setAttribute('font-size', fontSize(d))
+        text.setAttribute('dy', (dy + 3) / textScale)
+        const path = text.firstChild
+        path.setAttributeNS(
+          'http://www.w3.org/1999/xlink',
+          'href',
+          `#${d.key}-label`
+        )
+        path.style.fill = palette.fanText
+        path.style.textAnchor = 'middle'
+        path.setAttribute('startOffset', '50%')
+        path.style.letterSpacing = 'normal'
+        path.textContent = clipString(name(d.person.profile) || '', d)
+      }
+    })
+    this._fanLabelSignature = signature
+  })
 }
