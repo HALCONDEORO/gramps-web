@@ -56,3 +56,16 @@ it('treats custom event identifiers as literal text, not regex syntax', () => {
   const event = {...e, gramps_id: 'E[90001'}
   expect(parseBurialAge('E[90001 edad60años', event)[0]?.years).toBe(60)
 })
+
+it.each([
+  ['Inhumé Pierre, en présence de Jean son père âgé de 70 ans', true],
+  ['E90001 Pierre inhumé en présence de Jean son frère âgé de 60 ans', false],
+  ['Sepultura de Pedro, su padre Juan edad 70 años', true],
+  ['Inhumé Pierre avec son fils Jean âgé de 20 ans', true],
+  ['Inhumée Marie épouse de Jean âgé de 70 ans', true],
+])(
+  'rejects an age attached to a different or ambiguous subject: %s',
+  (text, attached) => {
+    expect(parseBurialAge(text, e, {attached})).toEqual([])
+  }
+)

@@ -95,6 +95,14 @@ export function parseBurialAge(
       )
     )
       continue
+    // A clause naming relatives or companions does not establish whose age
+    // follows. Fail closed rather than assigning their age to the deceased.
+    if (
+      /\b(?:presence|present|presente|presentes|pere|mere|frere|soeur|fils|fille|epoux|epouse|femme|mari|veuf|veuve|padre|madre|hermano|hermana|hijo|hija|esposo|esposa|marido|mujer|viudo|viuda|abuelo|abuela|nieto|nieta|yerno|nuera|beau|belle|gendre|temoin|testigo)\b/.test(
+        value
+      )
+    )
+      continue
     // Reject another event reference, even in an event-attached multi-act note.
     const refs = clause.match(/\bE\d+\b/g) ?? []
     if (refs.some(ref => ref !== id)) continue
