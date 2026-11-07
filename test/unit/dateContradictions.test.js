@@ -18,7 +18,7 @@ const event = (type, year, id = type) => ({
 const person = (handle, events = []) => ({
   handle,
   gramps_id: handle,
-  event_ref_list: events.map(() => ({role: 'Primary'})),
+  event_ref_list: events.map(event => ({ref: event.handle, role: 'Primary'})),
   extended: {events},
 })
 const family = (handle, events, spouse = 'mate') => ({
@@ -26,7 +26,7 @@ const family = (handle, events, spouse = 'mate') => ({
   gramps_id: handle,
   father_handle: 'self',
   mother_handle: spouse,
-  event_ref_list: events.map(() => ({role: 'Family'})),
+  event_ref_list: events.map(event => ({ref: event.handle, role: 'Family'})),
   extended: {events},
 })
 describe('recorded date intervals', () => {
@@ -123,11 +123,45 @@ describe('read-only date contradiction flags', () => {
     const second = family('two', [event('Marriage', 1802, 'm2')], 'otherMate')
     expect(dateContradictions(p, [], [first, second])).toEqual([])
     first.extended.events.push(event('Divorce', 1805, 'd1'))
-    first.event_ref_list.push({role: 'Family'})
+    first.event_ref_list.push({ref: 'd1', role: 'Family'})
     expect(dateContradictions(p, [], [first, second]).map(a => a.code)).toEqual(
       ['marriageBeforeDivorce']
     )
     second.mother_handle = 'mate'
     expect(dateContradictions(p, [], [first, second])).toEqual([])
   })
+})
+
+it('joins primary roles by matching event handle, never array position', () => {
+  const p = person('self', [
+    event('Burial', 1800, 'b'),
+    event('Baptism', 1801, 'c'),
+  ])
+  p.event_ref_list = [
+    {ref: 'UNRELATED-A', role: 'Primary'},
+    {ref: 'UNRELATED-B', role: 'Primary'},
+  ]
+  expect(dateContradictions(p)).toEqual([])
+  p.event_ref_list = [
+    {ref: 'c', role: 'Primary'},
+    {ref: 'b', role: 'Primary'},
+  ]
+  expect(dateContradictions(p).map(a => a.code)).toEqual([
+    'burialBeforeBaptism',
+  ])
+  p.event_ref_list = [
+    {ref: 'c', role: 'Primary'},
+    {ref: 'b', role: 'Witness'},
+  ]
+  expect(dateContradictions(p)).toEqual([])
+})
+
+it('does not compare nonstandard new-year conventions or duplicate reference roles', () => {
+  expect(recordedInterval({...date(1700), newyear: 25})).toBeUndefined()
+  const p = person('self', [
+    event('Burial', 1800, 'b'),
+    event('Baptism', 1801, 'c'),
+  ])
+  p.event_ref_list.push({ref: 'b', role: 'Witness'})
+  expect(dateContradictions(p)).toEqual([])
 })

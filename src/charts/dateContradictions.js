@@ -3,7 +3,12 @@ import {gregorianSdn, isValidCalendarDate} from '../gcalendar.js'
 // Only recorded Gregorian dates with normal quality and no modifiers. Partial
 // dates are intervals, not January 1. Other dates remain unassessed.
 export function recordedInterval(date) {
-  if (date?.calendar !== 0 || date?.modifier !== 0 || date?.quality !== 0)
+  if (
+    date?.calendar !== 0 ||
+    date?.modifier !== 0 ||
+    date?.quality !== 0 ||
+    (date?.newyear !== undefined && date.newyear !== 0)
+  )
     return undefined
   const dv = date.dateval
   if (!Array.isArray(dv) || dv.length !== 4 || dv[3]) return undefined
@@ -33,10 +38,13 @@ export function recordedInterval(date) {
 }
 
 const primary = (object, type, roles = ['Primary']) =>
-  (object?.extended?.events ?? []).filter(
-    (event, i) =>
-      event?.type === type && roles.includes(object.event_ref_list?.[i]?.role)
-  )
+  (object?.extended?.events ?? []).filter(event => {
+    if (event?.type !== type || !event.handle) return false
+    const refs = (object.event_ref_list ?? []).filter(
+      ref => ref.ref === event.handle
+    )
+    return refs.length === 1 && roles.includes(refs[0].role)
+  })
 const before = (first, second) => {
   const a = recordedInterval(first?.date)
   const b = recordedInterval(second?.date)
