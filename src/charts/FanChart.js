@@ -1,5 +1,7 @@
 import {zoomTransform} from 'd3-zoom'
 import {fanColorYear} from './fanColorYear.js'
+import {fanDeathYear} from './fanDeathYear.js'
+import {fanEstimatedYear} from './fanEstimatedYear.js'
 import {arc as d3arc} from 'd3-shape'
 import {create, local, select} from 'd3-selection'
 import {
@@ -41,9 +43,7 @@ export const fanColorModes = {
   },
   deathYear: {
     type: 'number',
-    fct: person =>
-      person?.extended?.events?.[person?.death_ref_index]?.date?.year ||
-      undefined,
+    fct: person => fanDeathYear(person)?.year,
   },
   age: {
     type: 'number',
@@ -81,6 +81,13 @@ export const fanColorModes = {
       person?.extended?.events?.filter(event => event?.type === 'Religion')?.[0]
         ?.description,
   },
+}
+
+const estimateDash = {
+  burial: '1 3',
+  burialAge: '5 2',
+  marriage: '2 3',
+  firstEvent: '7 2 1 2',
 }
 
 // The colours of category10, reordered so that the last one is grey
@@ -130,8 +137,15 @@ function countLegend(palette) {
 
 // Returns the colour of each arc by node, its opacity and the legend of the
 // colour mode `color` for the people in `nodes`
-function colorScheme(nodes, color, palette, otherLabel) {
-  const mode = fanColorModes[color] ?? fanColorModes.default
+function colorScheme(nodes, color, palette, otherLabel, yearEvidence) {
+  const mode =
+    color === 'estimatedYear'
+      ? {
+          type: 'number',
+          fct: person =>
+            fanEstimatedYear(person, yearEvidence.get(person?.handle))?.year,
+        }
+      : fanColorModes[color] ?? fanColorModes.default
   const people = nodes.map(node => node.person)
   const noLegend = () => null
   if (mode.type === 'number') {
@@ -347,6 +361,14 @@ export class FanChart {
       color = 'default',
       nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,
       otherLabel = 'Other',
+      yearEvidence = new Map(),
+      burialLabel = 'Burial, not death',
+      estimateLabels = [
+        'Estimated, not birth',
+        'Burial minus explicit age',
+        'Marriage minus 25 (heuristic)',
+        'First event date, not birth',
+      ],
       interactive = true,
       childrenButton = false,
       childrenLabel = '',
@@ -377,11 +399,25 @@ export class FanChart {
       fit,
       newLayout,
     })
-    const scheme = colorScheme(layout.nodes, color, palette, otherLabel)
+    const scheme = colorScheme(
+      layout.nodes,
+      color,
+      palette,
+      otherLabel,
+      yearEvidence
+    )
     this._arcShape = arcShape(layout, padding)
     this._nameOptions = {nameDisplayFormat, palette, padding}
     const cells = this._joinArcs(layout, relation, duration)
     this._colorArcs(cells, {scheme, palette, duration})
+    this._markEstimated(
+      cells,
+      color,
+      yearEvidence,
+      estimateLabels,
+      burialLabel,
+      palette.legendText
+    )
     setFanInteraction(cells, {
       interactive,
       onClick: arc => {
@@ -405,6 +441,103 @@ export class FanChart {
         `translate(${x + legendOffset[0]}, ${y + legendOffset[1]})`
       )
       .call(scheme.legend)
+    if (
+      color === 'deathYear' &&
+      layout.nodes.some(node => fanDeathYear(node.person)?.level === 'burial')
+    ) {
+      this._legend
+        .append('text')
+        .attr('class', 'burial-legend')
+        .attr('text-anchor', 'start')
+        .attr('y', 225)
+        .attr('fill', palette.legendText)
+        .attr('font-size', 12)
+        .text(`⋯ ${burialLabel}`)
+    }
+    if (color === 'estimatedYear') {
+      const legend = this._legend
+        .append('g')
+        .attr('class', 'estimate-legend')
+        .attr('text-anchor', 'start')
+        .attr('transform', 'translate(0,225)')
+      legend
+        .append('text')
+        .attr('fill', palette.legendText)
+        .attr('font-size', 12)
+        .text(estimateLabels[0])
+      ;['burialAge', 'marriage', 'firstEvent'].forEach((level, index) => {
+        legend
+          .append('line')
+          .attr('x1', 0)
+          .attr('x2', 20)
+          .attr('y1', 20 * (index + 1))
+          .attr('y2', 20 * (index + 1))
+          .attr('stroke', palette.legendText)
+          .attr('stroke-width', 2)
+          .attr('stroke-dasharray', estimateDash[level])
+        legend
+          .append('text')
+          .attr('x', 28)
+          .attr('y', 20 * (index + 1) + 4)
+          .attr('fill', palette.legendText)
+          .attr('font-size', 11)
+          .text(estimateLabels[index + 1])
+      })
+    }
+    if (color === 'estimatedYear' || color === 'deathYear') {
+      // A readable key even when a zoomed branch passes underneath it.
+      this._legend
+        .insert('rect', ':first-child')
+        .attr('class', 'year-legend-background')
+        .attr('x', -10)
+        .attr('y', -12)
+        .attr('width', color === 'estimatedYear' ? 250 : 205)
+        .attr('height', color === 'estimatedYear' ? 310 : 255)
+        .attr('rx', 6)
+        .attr('fill', palette.background)
+        .attr('fill-opacity', 0.94)
+    }
+  }
+
+  _markEstimated(cells, color, evidence, labels, burialLabel, stroke) {
+    const levels = ['burialAge', 'marriage', 'firstEvent', 'burial']
+    const estimate = node =>
+      color === 'estimatedYear'
+        ? fanEstimatedYear(node.person, evidence.get(node.person?.handle))
+        : color === 'deathYear'
+        ? fanDeathYear(node.person)
+        : undefined
+    cells
+      .select('.fan-arc')
+      .attr('stroke', node =>
+        estimateDash[estimate(node)?.level] ? stroke : null
+      )
+      .attr('stroke-width', node =>
+        estimateDash[estimate(node)?.level] ? 1.5 : null
+      )
+      .attr(
+        'stroke-dasharray',
+        node => estimateDash[estimate(node)?.level] ?? null
+      )
+      .attr('data-year-level', node => estimate(node)?.level ?? null)
+    cells
+      .selectAll('title.fan-year-provenance')
+      .data(node => {
+        const value = estimate(node)
+        return value && levels.includes(value.level) ? [value] : []
+      })
+      .join('title')
+      .attr('class', 'fan-year-provenance')
+      .text(
+        value =>
+          `${value.level === 'burial' ? burialLabel : labels[0]}: ${
+            value.year
+          }; ${
+            value.level === 'burial'
+              ? ''
+              : labels[levels.indexOf(value.level) + 1]
+          }${value.approximate ? ' (~)' : ''}${value.candidate ? ' (?)' : ''}`
+      )
   }
 
   // Draws the menu button on the disc of the `root` node if `show`. Like the

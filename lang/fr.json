@@ -1,4 +1,11 @@
 {
+    "Death or burial year": "Année de décès ou sépulture",
+    "Burial, not death": "Sépulture, pas un décès",
+    "Year with estimates": "Année avec estimations",
+    "Estimated, not birth": "Estimation, pas une naissance",
+    "Burial minus explicit age": "Sépulture moins âge explicite",
+    "Marriage minus 25 (heuristic)": "Mariage moins 25 (heuristique)",
+    "First event date, not birth": "Première date, pas une naissance",
     "Birth or baptism year": "Année de naissance ou de baptême",
     "Menu": "Menu",
     "Recently changed objects": "Éléments récemment modifiés",

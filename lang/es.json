@@ -1,4 +1,11 @@
 {
+    "Death or burial year": "Año de defunción o entierro",
+    "Burial, not death": "Entierro, no defunción",
+    "Year with estimates": "Año con estimaciones",
+    "Estimated, not birth": "Estimado, no nacimiento",
+    "Burial minus explicit age": "Entierro menos edad explícita",
+    "Marriage minus 25 (heuristic)": "Boda menos 25 (heurística)",
+    "First event date, not birth": "Primera fecha, no nacimiento",
     "Birth or baptism year": "Año de nacimiento o bautismo",
     "A new version of the app is available.": "Está disponible una versión nueva de la aplicación.",
     "Lists": "Listas",

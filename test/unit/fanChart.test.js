@@ -82,6 +82,125 @@ describe('FanChart', () => {
     expect(changed.nodes[0].person.birth_ref_index).toBe(-1)
   })
 
+  it('marks every estimated tier distinctly and clears marks in existing modes', () => {
+    const altered = {
+      ...layout,
+      nodes: layout.nodes.map((node, index) => {
+        const event = {
+          handle: `event${index}`,
+          type: index ? 'Death' : 'Burial',
+          date: {year: 1800},
+        }
+        const wedding = {
+          handle: 'wedding',
+          type: 'Marriage',
+          date: {year: 1770},
+        }
+        return {
+          ...node,
+          person: {
+            ...node.person,
+            birth_ref_index: -1,
+            event_ref_list: [{ref: event.handle, role: 'Primary'}],
+            extended: {
+              ...node.person.extended,
+              events: [event],
+              families:
+                index === 1
+                  ? [
+                      {
+                        father_handle: node.person.handle,
+                        mother_handle: 'partner',
+                        event_ref_list: [{ref: wedding.handle, role: 'Family'}],
+                        extended: {events: [wedding]},
+                      },
+                    ]
+                  : [],
+            },
+          },
+        }
+      }),
+    }
+    const before = JSON.stringify(altered)
+    const chart = new FanChart()
+    const yearEvidence = new Map([
+      [
+        'R',
+        [{eventHandle: 'event0', years: 70, evidence: 'explicit-burial-age'}],
+      ],
+    ])
+    chart.update(altered, {...size, color: 'estimatedYear', yearEvidence})
+    const arcs = cells(chart).map(cell => cell.querySelector('.fan-arc'))
+    expect(arcs.map(arc => arc.getAttribute('data-year-level'))).toEqual([
+      'burialAge',
+      'marriage',
+      'firstEvent',
+    ])
+    expect(
+      new Set(arcs.map(arc => arc.getAttribute('stroke-dasharray'))).size
+    ).toBe(3)
+    expect(chart.node.querySelectorAll('.fan-year-provenance')).toHaveLength(3)
+    expect(chart.node.querySelector('.estimate-legend').textContent).toContain(
+      'Estimated, not birth'
+    )
+    expect(chart.node.querySelector('.estimate-legend').textContent).toContain(
+      'First event date, not birth'
+    )
+    chart.update(altered, {...size, color: 'birthYear', yearEvidence})
+    expect(
+      chart.node.querySelectorAll(
+        '[data-year-level], .fan-year-provenance, .estimate-legend'
+      )
+    ).toHaveLength(0)
+    chart.update(altered, {...size, color: 'age', yearEvidence})
+    expect(
+      cells(chart).every(
+        cell =>
+          cell.querySelector('.fan-arc').getAttribute('fill') ===
+          chartPalette.fanNoValue
+      )
+    ).toBe(true)
+    expect(JSON.stringify(altered)).toBe(before)
+  })
+
+  it('marks Burial fallback but not actual Death, and clears its legend', () => {
+    const changed = {
+      ...layout,
+      nodes: layout.nodes.map((node, index) => ({
+        ...node,
+        person: {
+          ...node.person,
+          death_ref_index: index === 1 ? 0 : -1,
+          event_ref_list: [{role: 'Primary'}],
+          extended: {
+            ...node.person.extended,
+            events: [
+              {type: index === 1 ? 'Death' : 'Burial', date: {year: 1800}},
+            ],
+          },
+        },
+      })),
+    }
+    const chart = new FanChart()
+    chart.update(changed, {...size, color: 'deathYear'})
+    expect(
+      cells(chart)[0].querySelector('.fan-arc').getAttribute('stroke-dasharray')
+    ).toBe('1 3')
+    expect(
+      cells(chart)[1].querySelector('.fan-arc').getAttribute('stroke-dasharray')
+    ).toBeNull()
+    expect(
+      chart.node.querySelector('.fan-year-provenance').textContent
+    ).toContain('Burial, not death')
+    expect(chart.node.querySelector('.burial-legend').textContent).toContain(
+      'Burial, not death'
+    )
+    chart.update(changed, {...size, color: 'birthYear'})
+    expect(
+      chart.node.querySelectorAll('.burial-legend, .fan-year-provenance')
+    ).toHaveLength(0)
+  })
+
   it('draws an arc for each known person', () => {
     const chart = drawn()
     expect(cells(chart).map(cell => cell.__data__.key)).toEqual([
