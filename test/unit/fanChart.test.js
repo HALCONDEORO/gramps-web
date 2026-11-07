@@ -51,6 +51,37 @@ const texts = chart =>
   )
 
 describe('FanChart', () => {
+  it('colours a primary baptism without a Birth and leaves missing dates grey', () => {
+    const changed = {
+      ...layout,
+      nodes: layout.nodes.map((node, index) =>
+        index
+          ? node
+          : {
+              ...node,
+              person: {
+                ...node.person,
+                birth_ref_index: -1,
+                event_ref_list: [{role: 'Primary'}],
+                extended: {
+                  ...node.person.extended,
+                  events: [{type: 'Baptism', date: {year: 1660}}],
+                },
+              },
+            }
+      ),
+    }
+    const chart = new FanChart()
+    chart.update(changed, {...size, color: 'birthYear'})
+    const fills = cells(chart).map(cell =>
+      cell.querySelector('.fan-arc').getAttribute('fill')
+    )
+    expect(fills[0]).not.toBe(chartPalette.fanNoValue)
+    expect(fills[1]).toBe(chartPalette.fanNoValue)
+    expect(fills[2]).toBe(chartPalette.fanNoValue)
+    expect(changed.nodes[0].person.birth_ref_index).toBe(-1)
+  })
+
   it('draws an arc for each known person', () => {
     const chart = drawn()
     expect(cells(chart).map(cell => cell.__data__.key)).toEqual([

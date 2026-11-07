@@ -1,4 +1,5 @@
 import {zoomTransform} from 'd3-zoom'
+import {fanColorYear} from './fanColorYear.js'
 import {arc as d3arc} from 'd3-shape'
 import {create, local, select} from 'd3-selection'
 import {schemePaired, interpolateWarm, schemeYlOrRd} from 'd3-scale-chromatic'
@@ -31,9 +32,7 @@ export const fanColorModes = {
   },
   birthYear: {
     type: 'number',
-    fct: person =>
-      person?.extended?.events?.[person?.birth_ref_index]?.date?.year ||
-      undefined,
+    fct: fanColorYear,
   },
   deathYear: {
     type: 'number',
