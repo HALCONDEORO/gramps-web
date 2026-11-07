@@ -18,6 +18,7 @@ import {GrampsjsObject} from './GrampsjsObject.js'
 import {buttonColorStyles} from '../SharedStyles.js'
 import {getSymbols} from '../symbols.js'
 import './GrampsjsImg.js'
+import './GrampsjsDateAlerts.js'
 import './GrampsjsEditGender.js'
 import './GrampsjsPersonRelationship.js'
 import './GrampsjsFormExternalSearch.js'
@@ -200,6 +201,12 @@ export class GrampsjsPerson extends GrampsjsObject {
       </h2>
       ${this._renderBirth()} ${this._renderDeath()} ${this._renderRelation()}
       ${this.preview ? '' : this._renderButtons()}
+      ${this.preview || this.edit
+        ? ''
+        : html`<grampsjs-date-alerts
+            .person=${this.data}
+            .appState=${this.appState}
+          ></grampsjs-date-alerts>`}
     `
   }
 

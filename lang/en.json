@@ -486,5 +486,14 @@
   "Matches objects for which the given Gramps Object Query Language (GOQL) expression is true": "Matches objects for which the given Gramps Object Query Language (GOQL) expression is true",
   "Expression:": "Expression:",
   "Your full name and e-mail address may be updated whenever you sign in with a linked account.": "Your full name and e-mail address may be updated whenever you sign in with a linked account.",
-  "No connection": "No connection"
+  "No connection": "No connection",
+    "Date checks": "Date checks",
+    "Possible date contradictions": "Possible date contradictions",
+    "Checking available dates…": "Checking available dates…",
+    "Burial is dated before baptism.": "Burial is dated before baptism.",
+    "A biological child is dated before a parent was born.": "A biological child is dated before a parent was born.",
+    "A marriage is dated before another recorded divorce.": "A marriage is dated before another recorded divorce.",
+    "No contradiction found in the assessed dates. This is not a complete validation.": "No contradiction found in the assessed dates. This is not a complete validation.",
+    "Some related records could not be checked.": "Some related records could not be checked.",
+    "Review the linked sources before changing anything. Only unqualified Gregorian dates are assessed; partial dates must not overlap. Two weddings alone do not prove simultaneous spouses.": "Review the linked sources before changing anything. Only unqualified Gregorian dates are assessed; partial dates must not overlap. Two weddings alone do not prove simultaneous spouses."
 }

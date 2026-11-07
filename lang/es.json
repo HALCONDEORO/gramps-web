@@ -323,5 +323,14 @@
     "Change full name": "Cambiar nombre completo",
     "Anniversary calendar subscription": "Suscripción al calendario de aniversarios",
     "Delete %s objects?": "¿Eliminar %s objetos?",
-    "No objects selected.": "No se han seleccionado objetos."
+    "No objects selected.": "No se han seleccionado objetos.",
+    "Date checks": "Comprobación de fechas",
+    "Possible date contradictions": "Posibles contradicciones de fechas",
+    "Checking available dates…": "Comprobando las fechas disponibles…",
+    "Burial is dated before baptism.": "El entierro está fechado antes del bautismo.",
+    "A biological child is dated before a parent was born.": "Un hijo biológico está fechado antes del nacimiento de uno de sus padres.",
+    "A marriage is dated before another recorded divorce.": "Un matrimonio está fechado antes de otro divorcio registrado.",
+    "No contradiction found in the assessed dates. This is not a complete validation.": "No se han encontrado contradicciones en las fechas comprobadas. No es una validación completa.",
+    "Some related records could not be checked.": "No se han podido comprobar algunas fichas relacionadas.",
+    "Review the linked sources before changing anything. Only unqualified Gregorian dates are assessed; partial dates must not overlap. Two weddings alone do not prove simultaneous spouses.": "Revisa las fuentes enlazadas antes de cambiar nada. Solo se comprueban fechas gregorianas sin modificadores ni estimaciones; las fechas parciales no deben solaparse. Dos bodas por sí solas no prueban cónyuges simultáneos."
 }
