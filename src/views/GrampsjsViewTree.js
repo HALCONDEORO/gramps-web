@@ -238,6 +238,13 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
           #controls md-input-chip {
             max-width: 140px;
           }
+          #controls.fan-controls {
+            max-width: calc(100vw - 55px);
+            flex-wrap: wrap;
+          }
+          #controls.fan-controls ~ #selected-person {
+            top: 104px;
+          }
         }
 
         #usage-menu {
@@ -457,7 +464,9 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
     return html`
       <div id="tabs">${this.renderTabs()}</div>
       <div style="position: relative;">
-        <div id="controls">${this.renderControls()}</div>
+        <div id="controls" class=${this.chart === 'fan' ? 'fan-controls' : ''}>
+          ${this.renderControls()}
+        </div>
         <div id="chart" @pedigree:expand-branch=${this._expandBranch}>
           ${this.renderChart()}
         </div>

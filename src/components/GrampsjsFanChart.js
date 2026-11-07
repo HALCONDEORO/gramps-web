@@ -1,6 +1,7 @@
 import {html} from 'lit'
 
 import {FanChart} from '../charts/FanChart.js'
+import {loadFanYearEvidence} from '../charts/loadFanYearEvidence.js'
 import {layoutFan} from '../charts/layout/fanLayout.js'
 import {chartTransitionDuration} from '../charts/util.js'
 import {GrampsjsChartBase} from './GrampsjsChartBase.js'
@@ -25,6 +26,9 @@ class GrampsjsFanChart extends GrampsjsChartBase {
     this.depth = 5
     this.color = ''
     this._chart = new FanChart()
+    this._yearEvidence = new Map()
+    this._familyEvents = new Map()
+    this._evidenceRequest = 0
   }
 
   render() {
@@ -65,12 +69,93 @@ class GrampsjsFanChart extends GrampsjsChartBase {
     }
   }
 
-  updated() {
+  updated(changed) {
+    const scope = `${this.appState?.permissions?.canViewPrivate === true}:${
+      this.appState?.i18n?.lang || 'en'
+    }`
+    if (
+      layoutProperties.some(name => changed.has(name)) ||
+      changed.has('color') ||
+      scope !== this._evidenceScope
+    ) {
+      this._evidenceScope = scope
+      this._loadYearEvidence()
+    }
     if (!this._layout) {
       this._chart.clear()
       return
     }
-    this._chart.update(this._layout, this.chartOptions())
+    this._chart.update(this._displayLayout(), this.chartOptions())
+  }
+
+  _displayLayout() {
+    if (this.color !== 'estimatedYear' || !this._layout) return this._layout
+    if (
+      this._displayOriginal === this._layout &&
+      this._displayFamilies === this._familyEvents
+    )
+      return this._estimatedLayout
+    this._displayOriginal = this._layout
+    this._displayFamilies = this._familyEvents
+    this._estimatedLayout = {
+      ...this._layout,
+      nodes: this._layout.nodes.map(node => ({
+        ...node,
+        person: {
+          ...node.person,
+          extended: {
+            ...node.person?.extended,
+            families:
+              this._familyEvents.get(node.person?.handle) ??
+              node.person?.extended?.families,
+          },
+        },
+      })),
+    }
+    return this._estimatedLayout
+  }
+
+  async _loadYearEvidence() {
+    const request = ++this._evidenceRequest
+    this._yearEvidence = new Map()
+    this._familyEvents = new Map()
+    if (
+      this.color !== 'estimatedYear' ||
+      typeof this.appState?.apiGet !== 'function'
+    )
+      return
+    const result = await loadFanYearEvidence(
+      [
+        ...new Map(
+          (this._layout?.nodes ?? []).map(node => [node.handle, node.person])
+        ).values(),
+      ],
+      endpoint => this.appState.apiGet(endpoint),
+      {
+        privateNotes: this.appState?.permissions?.canViewPrivate === true,
+        lang: this.appState?.i18n?.lang || 'en',
+        isCurrent: () =>
+          request === this._evidenceRequest &&
+          this.color === 'estimatedYear' &&
+          this.isConnected,
+      }
+    )
+    if (
+      request !== this._evidenceRequest ||
+      this.color !== 'estimatedYear' ||
+      !this.isConnected
+    )
+      return
+    this._yearEvidence = result.yearEvidence
+    this._familyEvents = result.familyEvents
+    this.requestUpdate()
+  }
+
+  disconnectedCallback() {
+    this._evidenceRequest += 1
+    this._yearEvidence = new Map()
+    this._familyEvents = new Map()
+    super.disconnectedCallback()
   }
 
   chartOptions() {
@@ -78,6 +163,14 @@ class GrampsjsFanChart extends GrampsjsChartBase {
       color: this.color || 'default',
       nameDisplayFormat: this.nameDisplayFormat,
       otherLabel: this._('Other'),
+      burialLabel: this._('Burial, not death'),
+      yearEvidence: this._yearEvidence ?? new Map(),
+      estimateLabels: [
+        this._('Estimated, not birth'),
+        this._('Burial minus explicit age'),
+        this._('Marriage minus 25 (heuristic)'),
+        this._('First event date, not birth'),
+      ],
       childrenButton: this._children().length > 0,
       childrenLabel: this._('Children'),
       duration: chartTransitionDuration(),
