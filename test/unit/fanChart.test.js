@@ -80,7 +80,7 @@ describe('FanChart', () => {
     ).toEqual(['GivenR', 'Smith'])
   })
 
-  it('reveals deep ancestor names on zoom and hides them again on reset', () => {
+  it('reveals deep ancestor names on zoom and hides them again on reset', async () => {
     const chart = new FanChart()
     const deep = {
       ...layout,
@@ -103,7 +103,9 @@ describe('FanChart', () => {
     const applyZoom = transform =>
       select(chart.node).call(chart.viewport._zoom.transform, transform)
     applyZoom(zoomIdentity.scale(4))
-    expect(ancestor().querySelectorAll('text')).toHaveLength(2)
+    await vi.waitFor(() =>
+      expect(ancestor().querySelectorAll('text')).toHaveLength(2)
+    )
     expect(ancestor().querySelector('textPath').textContent).toBe('Smith')
     expect(
       +ancestor().querySelector('text').getAttribute('font-size') * 4
@@ -117,7 +119,157 @@ describe('FanChart', () => {
     })
     expect(ancestor().querySelector('textPath').textContent).toBe('GivenF')
     applyZoom(zoomIdentity)
-    expect(ancestor().querySelectorAll('text')).toHaveLength(0)
+    await vi.waitFor(() =>
+      expect(ancestor().querySelectorAll('text')).toHaveLength(0)
+    )
+  })
+
+  it('reveals every generation including outer rings at sufficient zoom', async () => {
+    const chart = new FanChart()
+    const deep = {
+      ...layout,
+      nodes: [
+        layout.nodes[0],
+        ...Array.from({length: 12}, (_, i) => {
+          const generation = i + 1
+          return {
+            ...layout.nodes[1],
+            key: `outer-${generation}`,
+            generation,
+            x0: 0,
+            x1: (2 * Math.PI) / 2 ** generation,
+            y0: generation * 60,
+            y1: (generation + 1) * 60,
+          }
+        }),
+      ],
+    }
+    chart.update(deep, size)
+    select(chart.node).call(
+      chart.viewport._zoom.transform,
+      zoomIdentity.scale(64)
+    )
+    await vi.waitFor(() => {
+      for (let generation = 1; generation <= 12; generation += 1) {
+        const cell = chart.node.querySelector(`#outer-${generation}`).parentNode
+        expect(cell.querySelectorAll('text')).toHaveLength(2)
+        expect(cell.querySelector('textPath').textContent).toBe('Smith')
+      }
+    })
+  })
+
+  it('uses an open dedicated mid-arc path and readable screen font for deep labels', async () => {
+    const chart = new FanChart()
+    const deep = {
+      ...layout,
+      nodes: [
+        layout.nodes[0],
+        {
+          ...layout.nodes[1],
+          key: 'pdeep',
+          generation: 8,
+          x0: 0,
+          x1: (2 * Math.PI) / 256,
+          y0: 480,
+          y1: 540,
+        },
+      ],
+    }
+    chart.update(deep, size)
+    select(chart.node).call(
+      chart.viewport._zoom.transform,
+      zoomIdentity.scale(5.13)
+    )
+    await vi.waitFor(() =>
+      expect(chart.node.querySelector('#pdeep-label')).not.toBeNull()
+    )
+    const arc = chart.node.querySelector('#pdeep-label')
+    expect(arc.getAttribute('d')).not.toMatch(/[zZ]/)
+    const text = chart.node
+      .querySelector('#pdeep')
+      .parentNode.querySelector('text')
+    expect(+text.getAttribute('font-size') * 5.13).toBeCloseTo(12)
+    const path = text.querySelector('textPath')
+    expect(path.getAttributeNS('http://www.w3.org/1999/xlink', 'href')).toBe(
+      '#pdeep-label'
+    )
+    expect(path.getAttribute('startOffset')).toBe('50%')
+  })
+
+  it('keeps root clipping consistent with its inherited 12 unit font', async () => {
+    const long = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.repeat(5)
+    const changed = {
+      ...layout,
+      nodes: layout.nodes.map((d, i) =>
+        i
+          ? d
+          : {
+              ...d,
+              person: {
+                ...d.person,
+                profile: {
+                  ...d.person.profile,
+                  name_given: long,
+                  name_surname: long,
+                },
+              },
+            }
+      ),
+    }
+    const chart = new FanChart()
+    chart.update(changed, size)
+    const root = () => chart.node.querySelector('.fan-cell text').textContent
+    const before = root()
+    select(chart.node).call(
+      chart.viewport._zoom.transform,
+      zoomIdentity.scale(4)
+    )
+    await new Promise(resolve => setTimeout(resolve, 150))
+    expect(root()).toBe(before)
+  })
+
+  it('waits for scale events to settle and reuses visible label nodes', async () => {
+    const chart = drawn()
+    const first = chart.node.querySelector('.fan-cell:nth-child(2) text')
+    const draw = vi.spyOn(chart, '_drawNames')
+    for (let k = 2; k <= 5; k += 1) {
+      select(chart.node).call(
+        chart.viewport._zoom.transform,
+        zoomIdentity.scale(k)
+      )
+    }
+    expect(draw).not.toHaveBeenCalled()
+    await new Promise(resolve => setTimeout(resolve, 150))
+    expect(draw).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() =>
+      expect(+first.getAttribute('font-size') * 5).toBe(12)
+    )
+    expect(chart.node.querySelector('.fan-cell:nth-child(2) text')).toBe(first)
+    expect(+first.getAttribute('font-size') * 5).toBe(12)
+  })
+
+  it('does not create offscreen labels and restores them after pan', async () => {
+    const chart = drawn()
+    document.body.appendChild(chart.node)
+    select(chart.node).call(
+      chart.viewport._zoom.transform,
+      zoomIdentity.translate(10000, 10000).scale(4)
+    )
+    await vi.waitFor(() => expect(texts(chart)).toEqual([]))
+    select(chart.node).call(chart.viewport._zoom.transform, zoomIdentity)
+    await vi.waitFor(() => expect(texts(chart)).toContain('Smith'))
+    chart.node.remove()
+  })
+
+  it('cancels pending label work when cleared', async () => {
+    const chart = drawn()
+    select(chart.node).call(
+      chart.viewport._zoom.transform,
+      zoomIdentity.scale(4)
+    )
+    chart.clear()
+    await new Promise(resolve => setTimeout(resolve, 200))
+    expect(texts(chart)).toEqual([])
   })
 
   it('keeps names hidden during arc motion even if the scale changes', async () => {
