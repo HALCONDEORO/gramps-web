@@ -128,6 +128,8 @@ const fanColors = {
   deathYear: 'Death year',
   age: 'Age',
   surname: 'Surname',
+  surnameFirst: 'First surname',
+  surnameFirstJoined: 'First surname (Tevar / Tebar)',
   religion: 'Religion',
   nPaths: 'Ancestor frequency',
 }

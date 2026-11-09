@@ -1,3 +1,4 @@
+import {firstSurname, surnameGroups} from './fanSurname.js'
 import {zoomTransform} from 'd3-zoom'
 import {fanColorYear} from './fanColorYear.js'
 import {arc as d3arc} from 'd3-shape'
@@ -75,6 +76,8 @@ export const fanColorModes = {
       return `${surname.prefix} ${surname.surname}`.trim()
     },
   },
+  surnameFirst: {type: 'surnameFirst'},
+  surnameFirstJoined: {type: 'surnameFirst'},
   religion: {
     type: 'category',
     fct: person =>
@@ -130,7 +133,7 @@ function countLegend(palette) {
 
 // Returns the colour of each arc by node, its opacity and the legend of the
 // colour mode `color` for the people in `nodes`
-function colorScheme(nodes, color, palette, otherLabel) {
+function colorScheme(nodes, color, palette, otherLabel, surnameLabels = {}) {
   const mode = fanColorModes[color] ?? fanColorModes.default
   const people = nodes.map(node => node.person)
   const noLegend = () => null
@@ -182,6 +185,48 @@ function colorScheme(nodes, color, palette, otherLabel) {
       },
       opacity: 0.5,
       legend: countLegend(palette),
+    }
+  }
+  if (mode.type === 'surnameFirst') {
+    const groups = surnameGroups(nodes, {
+      joinTevarTebar: color === 'surnameFirstJoined',
+    })
+    const data = groups.highlighted.map(g => ({
+      label: `${g.name} (${g.count})`,
+      color: g.color,
+    }))
+    if (groups.other)
+      data.push({label: `${otherLabel} (${groups.other})`, color: '#536276'})
+    if (groups.unknown)
+      data.push({
+        label: `${surnameLabels.unknown || 'No recorded surname'} (${
+          groups.unknown
+        })`,
+        color: '#293342',
+      })
+    data.push({
+      label:
+        surnameLabels.positions || 'Counts are positions, not unique people',
+      color: 'none',
+    })
+    if (color === 'surnameFirstJoined')
+      data.push({
+        label: surnameLabels.joined || 'Tevar / Tebar: visual grouping only',
+        color: 'none',
+      })
+    return {
+      fill: groups.fill,
+      text: groups.text,
+      surname: node => firstSurname(node.person),
+      opacity: 1,
+      legend: legend =>
+        LegendCategorical(legend, data, {
+          legendItemHeight: 18,
+          legendItemWidth: 18,
+          legendItemMargin: 6,
+          opacity: 1,
+          textColor: palette.legendText,
+        }),
     }
   }
   if (mode.type === 'category') {
@@ -285,7 +330,7 @@ function arcShape(layout, padding) {
 export class FanChart {
   constructor() {
     this._svg = create('svg')
-      .attr('font-family', 'Inter var')
+      .attr('font-family', "'Inter var', sans-serif")
       .attr('font-size', 12)
       .attr('text-anchor', 'middle')
     this._content = this._svg.append('g').attr('id', 'chart-content')
@@ -347,6 +392,8 @@ export class FanChart {
       color = 'default',
       nameDisplayFormat = chartNameDisplayFormat.surnameThenGiven,
       otherLabel = 'Other',
+      surnameLabels = {},
+      externalSurnameLegend = false,
       interactive = true,
       childrenButton = false,
       childrenLabel = '',
@@ -377,9 +424,21 @@ export class FanChart {
       fit,
       newLayout,
     })
-    const scheme = colorScheme(layout.nodes, color, palette, otherLabel)
+    const scheme = colorScheme(
+      layout.nodes,
+      color,
+      palette,
+      otherLabel,
+      surnameLabels
+    )
     this._arcShape = arcShape(layout, padding)
-    this._nameOptions = {nameDisplayFormat, palette, padding}
+    this._nameOptions = {
+      nameDisplayFormat,
+      palette,
+      padding,
+      textColor: scheme.text,
+      surnameText: scheme.surname,
+    }
     const cells = this._joinArcs(layout, relation, duration)
     this._colorArcs(cells, {scheme, palette, duration})
     setFanInteraction(cells, {
@@ -405,6 +464,8 @@ export class FanChart {
         `translate(${x + legendOffset[0]}, ${y + legendOffset[1]})`
       )
       .call(scheme.legend)
+    if (externalSurnameLegend && color.startsWith('surnameFirst'))
+      this._legend.selectChildren().remove()
   }
 
   // Draws the menu button on the disc of the `root` node if `show`. Like the
@@ -511,7 +572,7 @@ export class FanChart {
     }
     cells
       .select('.fan-side')
-      .attr('display', d => (d.generation > 0 ? null : 'none'))
+      .attr('display', d => (d.generation > 0 && !scheme.text ? null : 'none'))
       .attr('fill', d => (d.side === 'mother' ? palette.sex.F : palette.sex.M))
   }
 
@@ -645,7 +706,15 @@ function setFanInteraction(cells, {interactive, onClick}) {
 // person, and two lines along the arc for ancestors whose arc is long enough
 function appendNames(
   cells,
-  {nameDisplayFormat, palette, padding, zoomScale = 1, labelViewport}
+  {
+    nameDisplayFormat,
+    palette,
+    padding,
+    zoomScale = 1,
+    labelViewport,
+    textColor,
+    surnameText,
+  }
 ) {
   const surnameFirst =
     nameDisplayFormat === chartNameDisplayFormat.surnameThenGiven
@@ -690,6 +759,10 @@ function appendNames(
   // Cache labels on their arc element. Layout changes remove labels before
   // this function; zoom only changes attributes/text on the existing nodes.
   cells.each(function (d) {
+    const profile = {
+      ...d.person.profile,
+      name_surname: surnameText?.(d) ?? d.person.profile.name_surname,
+    }
     const center = d.generation === 0
     if (!this._fanBounds || this._fanBounds.data !== d) {
       const angles = [d.x0, d.x1]
@@ -740,10 +813,10 @@ function appendNames(
     const signature = [
       zoomScale,
       nameDisplayFormat,
-      palette.fanText,
+      textColor ? textColor(d) : palette.fanText,
       padding,
       d.person.profile.name_given,
-      d.person.profile.name_surname,
+      profile.name_surname,
     ].join('|')
     if (
       this._fanLabelSignature === signature &&
@@ -766,11 +839,11 @@ function appendNames(
     }
     lines.forEach(({name, weight, dy}, index) => {
       const text = this._fanLabels[index]
-      text.style.fill = palette.fanText
+      text.style.fill = textColor ? textColor(d) : palette.fanText
       text.setAttribute('font-weight', weight)
       if (center) {
         text.setAttribute('dy', index ? '0.6em' : '-0.6em')
-        text.textContent = clipString(name(d.person.profile) || '', d, true)
+        text.textContent = clipString(name(profile) || '', d, true)
       } else {
         text.setAttribute('font-size', fontSize(d))
         text.setAttribute('dy', (dy + 3) / textScale)
@@ -780,11 +853,11 @@ function appendNames(
           'href',
           `#${d.key}-label`
         )
-        path.style.fill = palette.fanText
+        path.style.fill = textColor ? textColor(d) : palette.fanText
         path.style.textAnchor = 'middle'
         path.setAttribute('startOffset', '50%')
         path.style.letterSpacing = 'normal'
-        path.textContent = clipString(name(d.person.profile) || '', d)
+        path.textContent = clipString(name(profile) || '', d)
       }
     })
     this._fanLabelSignature = signature
