@@ -69,8 +69,17 @@ export async function chartSvgDocument(
   const {xMin, xMax, yMin, yMax} = layout.bounds
   const x = xMin - exportMargin
   const y = yMin - exportMargin
-  const width = xMax - xMin + 2 * exportMargin
-  const height = yMax - yMin + 2 * exportMargin
+  // Optional surname keys explain display-only groups and position counts.
+  // Keep them in a separate gutter so they never cover an exported person.
+  const legend = options.preserveLegend ? svg.querySelector('#legend') : null
+  const gutter = legend ? options.legendWidth || 270 : 0
+  const width = xMax - xMin + 2 * exportMargin + gutter
+  const height = Math.max(
+    yMax - yMin + 2 * exportMargin,
+    legend ? options.legendHeight || 350 : 0
+  )
+  if (legend)
+    legend.setAttribute('transform', `translate(${xMax + 40},${y + 20})`)
   svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
   svg.setAttribute('width', width)
   svg.setAttribute('height', height)
@@ -78,7 +87,7 @@ export async function chartSvgDocument(
   svg.setAttribute('font-family', "'Inter var', sans-serif")
   svg.removeAttribute('style')
   for (const child of [...svg.children]) {
-    if (child.id !== 'chart-content') {
+    if (child.id !== 'chart-content' && child !== legend) {
       child.remove()
     }
   }
