@@ -1,5 +1,7 @@
-import {html} from 'lit'
+import {html, css} from 'lit'
+import {surnameGroups} from '../charts/fanSurname.js'
 
+import {chartSvgDocument} from '../charts/svgExport.js'
 import {FanChart} from '../charts/FanChart.js'
 import {layoutFan} from '../charts/layout/fanLayout.js'
 import {chartTransitionDuration} from '../charts/util.js'
@@ -10,6 +12,70 @@ import {rootRelatives} from './GrampsjsChartRelativesMenu.js'
 const layoutProperties = ['data', 'grampsId', 'depth']
 
 class GrampsjsFanChart extends GrampsjsChartBase {
+  static get styles() {
+    return [
+      ...super.styles,
+      css`
+        .surname-layout {
+          display: flex;
+          align-items: flex-start;
+        }
+        .surname-layout #container {
+          flex: 1;
+          min-width: 0;
+        }
+        aside {
+          width: 280px;
+          flex-shrink: 0;
+          padding: 16px;
+          box-sizing: border-box;
+          max-height: calc(100vh - 160px);
+          overflow-y: auto;
+        }
+        aside h3 {
+          font-size: 16px;
+          margin: 0 0 16px;
+        }
+        .surname-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 10px;
+          font-size: 14px;
+        }
+        .swatch {
+          width: 18px;
+          height: 18px;
+          border-radius: 3px;
+          flex-shrink: 0;
+          border: 1px solid #718298;
+        }
+        .surname-name {
+          overflow-wrap: anywhere;
+          flex: 1;
+        }
+        aside p {
+          font-size: 13px;
+          line-height: 1.5;
+        }
+        @media (max-width: 800px) {
+          .surname-layout {
+            flex-direction: column;
+          }
+          .surname-layout #container {
+            width: 100%;
+            flex: auto;
+            height: clamp(340px, 100vw, 650px);
+          }
+          aside {
+            width: 100%;
+            max-height: 280px;
+          }
+        }
+      `,
+    ]
+  }
+
   static get properties() {
     return {
       grampsId: {type: String},
@@ -33,7 +99,12 @@ class GrampsjsFanChart extends GrampsjsChartBase {
         @pedigree:show-children="${this._openMenu}"
         style="position:relative;"
       >
-        <div id="container"></div>
+        <div
+          class=${this.color.startsWith('surnameFirst') ? 'surname-layout' : ''}
+        >
+          <div id="container"></div>
+          ${this._surnameLegend()}
+        </div>
         <grampsjs-chart-relatives-menu
           id="relatives-menu"
           .relatives=${this._children()}
@@ -42,6 +113,46 @@ class GrampsjsFanChart extends GrampsjsChartBase {
         ></grampsjs-chart-relatives-menu>
       </div>
     `
+  }
+
+  _surnameLegend() {
+    if (!this.color.startsWith('surnameFirst') || !this._layout) return ''
+    const groups = surnameGroups(this._layout.nodes, {
+      joinTevarTebar: this.color === 'surnameFirstJoined',
+    })
+    const rows = groups.highlighted.map(g => ({
+      label: g.name,
+      count: g.count,
+      color: g.color,
+    }))
+    if (groups.other)
+      rows.push({
+        label: this._('Other surnames'),
+        count: groups.other,
+        color: '#536276',
+      })
+    if (groups.unknown)
+      rows.push({
+        label: this._('No recorded surname'),
+        count: groups.unknown,
+        color: '#293342',
+      })
+    return html`<aside aria-label=${this._('First surname')} tabindex="0">
+      <h3>${this._('First surname')}</h3>
+      ${rows.map(
+        row =>
+          html`<div class="surname-row">
+            <span class="swatch" style="background:${row.color}"></span
+            ><span class="surname-name">${row.label}</span
+            ><strong>${row.count}</strong>
+          </div>`
+      )}
+      <p>${this._('Counts are positions, not unique people')}</p>
+      <p>${this._('Visual grouping only; recorded names are unchanged')}</p>
+      ${this.color === 'surnameFirstJoined'
+        ? html`<p>${this._('Tevar / Tebar: visual grouping only')}</p>`
+        : ''}
+    </aside>`
   }
 
   firstUpdated() {
@@ -65,12 +176,33 @@ class GrampsjsFanChart extends GrampsjsChartBase {
     }
   }
 
-  updated() {
+  updated(changed) {
     if (!this._layout) {
       this._chart.clear()
       return
     }
-    this._chart.update(this._layout, this.chartOptions())
+    this._chart.update(this._layout, {
+      ...this.chartOptions(),
+      externalSurnameLegend: true,
+    })
+    // Adding/removing the separate legend changes the chart's actual width.
+    // Fit after that resize, rather than preserving a transform for the old
+    // width that can clip outer generations. Ordinary pan/zoom is unchanged.
+    if (
+      this.color.startsWith('surnameFirst') &&
+      (changed.has('color') || changed.has('containerWidth'))
+    )
+      this._chart.viewport.fit()
+  }
+
+  svgDocument() {
+    if (!this._layout) return Promise.resolve(null)
+    return chartSvgDocument(FanChart, this._layout, {
+      ...this.chartOptions(),
+      preserveLegend: this.color.startsWith('surnameFirst'),
+      legendWidth: 370,
+      legendHeight: 600,
+    })
   }
 
   chartOptions() {
@@ -78,6 +210,11 @@ class GrampsjsFanChart extends GrampsjsChartBase {
       color: this.color || 'default',
       nameDisplayFormat: this.nameDisplayFormat,
       otherLabel: this._('Other'),
+      surnameLabels: {
+        unknown: this._('No recorded surname'),
+        positions: this._('Counts are positions, not unique people'),
+        joined: this._('Tevar / Tebar: visual grouping only'),
+      },
       childrenButton: this._children().length > 0,
       childrenLabel: this._('Children'),
       duration: chartTransitionDuration(),
