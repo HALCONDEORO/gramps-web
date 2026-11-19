@@ -125,10 +125,12 @@ const descendantsSetting = (key, defaultValue) => ({
 const fanColors = {
   nEvents: 'Number of events',
   nNotes: 'Number of notes',
-  birthYear: 'Birth year',
+  birthYear: 'Birth or baptism year',
   deathYear: 'Death year',
   age: 'Age',
   surname: 'Surname',
+  surnameFirst: 'First surname',
+  surnameFirstJoined: 'First surname (Tevar / Tebar)',
   religion: 'Religion',
   nPaths: 'Ancestor frequency',
 }

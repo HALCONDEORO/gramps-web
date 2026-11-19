@@ -20,11 +20,12 @@ export const fitMargin = 20
 // person at the origin. The viewBox is as large as the container, so one
 // viewBox unit is one screen pixel.
 export class ChartViewport {
-  constructor(svg, content) {
+  constructor(svg, content, {onZoom = () => {}} = {}) {
     this._svg = svg
-    this._zoom = zoom().on('zoom', event =>
+    this._zoom = zoom().on('zoom', event => {
       content.attr('transform', event.transform)
-    )
+      onZoom(event.transform)
+    })
     svg.call(this._zoom)
     this._rootHandle = undefined
     this._viewStart = [0, 0]
