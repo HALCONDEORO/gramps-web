@@ -46,3 +46,15 @@ Publish a PR against the fork from the stated base, review the exact head,
 and require green CI. Preserve a backup of the current static assets and
 rollback route before deployment. The test images show the real modified
 component with a local harness, not an already-deployed production page.
+
+## Port to 26.11.3 (2026-11-19)
+
+Upstream release base: v26.11.3 (20c7655db9d2a28c2733767eaeded0f29e9154bb).
+Recovered the original source, not a reconstruction of the served bundle.
+Preserved the complete deployed patch stack from 538dd58c through 4ed65bda:
+zoom notifications, deep labels and levels, semantic-r6 label behavior,
+baptism-year color fallback, first-surname grouping and exported legends.
+All six commits applied cleanly. Upstream release changes remain intact.
+No private config, family data or production assets are part of this port.
+Historical validation notes above refer to the original November 9 patch,
+not to this release port. This branch is preparation only, not a deployment.
